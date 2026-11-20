@@ -6,6 +6,13 @@
 
 先安装 64 位 PotPlayer。从 [GitHub Releases](https://github.com/kuuhaku1314/BiliBridge/releases/latest) 下载 `BiliBridge-*-windows-amd64.zip` 并完整解压。在解压后的目录中，双击 `bin/BiliBridgeDesktop.exe` 启动托盘程序。
 
+<details>
+<summary>查看安装与使用流程图</summary>
+
+![BiliBridge v0.1.2 安装与使用流程图](docs/images/quick-start-v0.1.2.png)
+
+</details>
+
 **Windows 发布包已内置 FFmpeg**，用于命令行的 `-hls` 模式。解压后即可使用，无需另行安装或配置 `PATH`。
 
 首次启动会登记 Chrome / Edge 的本机消息入口，并自动为 PotPlayer 添加 **B站首页**、**我的收藏** 和 **我关注的直播** 三个原生外部专辑。PotPlayer 正在运行时，专辑文件在它退出后更新。按 F6 查看右侧播放列表，在对应专辑的右键菜单中可切换「样式 → 显示缩略图 + 4 行信息」。直播专辑只显示正在开播的关注房间，可打开 B 站提供的 FLV 直播源。直播起播前会尝试预缓冲 6 秒内容，最多等待 10 秒或缓存 12 MiB。
