@@ -66,6 +66,8 @@ function addPotPlayerButton() {
     toolbar = toolbarPlayer = null;
     return;
   }
+  // Keep the server-rendered DOM intact until Bilibili's Vue app takes over.
+  if (host.closest("[data-server-rendered]")) return;
   if (toolbarPlayer === player) {
     if (toolbar.parentElement !== host) host.insertBefore(toolbar, live ? host.firstChild : null);
     return;
@@ -128,7 +130,9 @@ new MutationObserver(() => {
   if (!pendingFrame) {
     pendingFrame = requestAnimationFrame(addPotPlayerButton);
   }
-}).observe(document.documentElement, {childList: true, subtree: true});
+}).observe(document.documentElement, {
+  childList: true, subtree: true, attributes: true, attributeFilter: ["data-server-rendered"]
+});
 addPotPlayerButton();
 if (!liveOrigin || liveRoomPage.test(location.pathname)) {
   const login = location.origin === "https://www.bilibili.com" && location.pathname === "/" &&
