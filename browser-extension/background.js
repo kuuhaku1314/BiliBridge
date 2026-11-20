@@ -60,7 +60,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       !["play", "sync", "login"].includes(message.action)) {
     return false;
   }
-  const page = new URL(sender.url);
+  const senderPage = new URL(sender.url);
+  let page = senderPage;
+  if (message.action === "play") {
+    // The sender URL can be stale after a same-document video switch.
+    try {
+      page = new URL(message.ref);
+    } catch {
+      return false;
+    }
+    if (page.origin !== senderPage.origin || page.username || page.password) {
+      return false;
+    }
+  }
   if (message.action === "login" && !isLoginPage(page)) {
     return false;
   }

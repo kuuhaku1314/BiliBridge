@@ -4,7 +4,7 @@
 
 ## 启动
 
-先安装 64 位 PotPlayer。从 [GitHub Releases](https://github.com/kuuhaku1314/BiliBridge/releases/latest) 下载 `BiliBridge-*-windows-amd64.zip` 并完整解压。在解压后的目录中，双击 `bin/BiliBridgeDesktop.exe` 启动托盘程序。
+先安装 64 位 PotPlayer。从 [GitHub Releases](https://github.com/kuuhaku1314/BiliBridge/releases) 下载 `BiliBridge-*-windows-amd64.zip` 并完整解压。在解压后的目录中，双击 `bin/BiliBridgeDesktop.exe` 启动托盘程序。
 
 <details>
 <summary>查看安装与使用流程图</summary>

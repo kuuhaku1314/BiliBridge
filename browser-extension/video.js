@@ -98,7 +98,9 @@ function addPotPlayerButton() {
     status.hidden = false;
     status.textContent = "正在打开…";
     try {
-      const result = await chrome.runtime.sendMessage({action: "play", at: live ? 0 : (video?.currentTime || 0), ...source});
+      const result = await chrome.runtime.sendMessage({
+        action: "play", ref: pageAtClick, at: live ? 0 : (video?.currentTime || 0), ...source
+      });
       if (!result?.ok) {
         status.textContent = result?.error || "BiliBridge 未返回播放结果";
         return;
