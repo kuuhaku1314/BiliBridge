@@ -1,0 +1,50 @@
+.bilibridge-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+.bilibridge-toolbar-live {
+  margin-top: 6px;
+}
+
+.bilibridge-toolbar .bilibridge-open {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid #94e4f4;
+  border-radius: 6px;
+  background: #15242ef0;
+  color: #ebfbff;
+  font: 600 12px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.bilibridge-toolbar .bilibridge-open:hover,
+.bilibridge-toolbar .bilibridge-open:focus-visible {
+  background: #075769;
+}
+
+.bilibridge-toolbar .bilibridge-open:disabled {
+  cursor: progress;
+  opacity: .7;
+}
+
+.bilibridge-toolbar .bilibridge-status {
+  max-width: min(350px, 80%);
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #15242ef5;
+  color: #ebfbff;
+  font: 12px/1.5 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.bilibridge-toolbar .bilibridge-status[hidden] {
+  display: none;
+}
