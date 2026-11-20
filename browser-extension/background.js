@@ -82,11 +82,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       const cookie = await readCookie(storeId);
+      const quality = message.quality;
+      const validQuality = liveRoom ? Number.isInteger(quality) && quality > 0 && quality <= 30000 : qualities.has(quality);
       sendResponse(await chrome.runtime.sendNativeMessage(hostName, {
         action: message.action,
         ref: ref.href,
         at: Number.isFinite(message.at) ? Math.max(0, message.at) : 0,
-        quality: qualities.has(message.quality) ? message.quality : 0,
+        quality: validQuality ? quality : 0,
         codec: codecs.has(message.codec) ? message.codec : 0,
         cookie
       }));

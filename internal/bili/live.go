@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -84,21 +85,41 @@ func (c *Client) FollowedLive(ctx context.Context) ([]LiveRoom, error) {
 	return live, nil
 }
 
-func (c *Client) liveURLs(ctx context.Context, room int64) ([]string, error) {
+type liveSource struct {
+	url     string
+	quality int
+	label   string
+}
+
+type LiveStream struct {
+	io.ReadCloser
+	Quality      int
+	QualityLabel string
+}
+
+func (c *Client) liveSources(ctx context.Context, room int64, quality int) ([]liveSource, error) {
+	if quality <= 0 || quality > 30000 {
+		quality = 10000
+	}
 	params := url.Values{
 		"room_id": {strconv.FormatInt(room, 10)}, "platform": {"web"}, "protocol": {"0"},
-		"format": {"0"}, "codec": {"0,1"}, "qn": {"10000"}, "no_playurl": {"0"},
+		"format": {"0"}, "codec": {"0,1"}, "qn": {strconv.Itoa(quality)}, "no_playurl": {"0"},
 	}
 	var data struct {
 		Status int `json:"live_status"`
 		Info   struct {
 			PlayURL struct {
+				Qualities []struct {
+					ID   int    `json:"qn"`
+					Name string `json:"desc"`
+				} `json:"g_qn_desc"`
 				Streams []struct {
 					Formats []struct {
 						Name   string `json:"format_name"`
 						Codecs []struct {
-							Path string `json:"base_url"`
-							URLs []struct {
+							Path    string `json:"base_url"`
+							Quality int    `json:"current_qn"`
+							URLs    []struct {
 								Host  string `json:"host"`
 								Extra string `json:"extra"`
 							} `json:"url_info"`
@@ -114,7 +135,11 @@ func (c *Client) liveURLs(ctx context.Context, room int64) ([]string, error) {
 	if data.Status != 1 {
 		return nil, errors.New("直播间当前未开播")
 	}
-	var urls []string
+	labels := make(map[int]string)
+	for _, option := range data.Info.PlayURL.Qualities {
+		labels[option.ID] = option.Name
+	}
+	var sources []liveSource
 	for _, stream := range data.Info.PlayURL.Streams {
 		for _, format := range stream.Formats {
 			if format.Name != "flv" {
@@ -124,16 +149,27 @@ func (c *Client) liveURLs(ctx context.Context, room int64) ([]string, error) {
 				for _, mirror := range codec.URLs {
 					u, err := url.Parse(mirror.Host + codec.Path + mirror.Extra)
 					if err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil {
-						urls = append(urls, u.String())
+						sources = append(sources, liveSource{u.String(), codec.Quality, labels[codec.Quality]})
 					}
 				}
 			}
 		}
 	}
-	if len(urls) == 0 {
+	if len(sources) == 0 {
 		return nil, errors.New("直播间没有返回可用的 FLV 播放源")
 	}
-	return urls, nil
+	// Prefer the requested quality over fallbacks returned for other codecs.
+	slices.SortStableFunc(sources, func(a, b liveSource) int {
+		switch {
+		case a.quality == quality && b.quality != quality:
+			return -1
+		case a.quality != quality && b.quality == quality:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return sources, nil
 }
 
 var liveHTTP = &http.Client{Transport: &http.Transport{
@@ -142,13 +178,13 @@ var liveHTTP = &http.Client{Transport: &http.Transport{
 	ForceAttemptHTTP2:     true,
 }}
 
-func (c *Client) OpenLive(ctx context.Context, room int64) (io.ReadCloser, error) {
-	sources, err := c.liveURLs(ctx, room)
+func (c *Client) OpenLive(ctx context.Context, room int64, quality int) (*LiveStream, error) {
+	sources, err := c.liveSources(ctx, room, quality)
 	if err != nil {
 		return nil, err
 	}
 	for _, source := range sources {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +195,7 @@ func (c *Client) OpenLive(ctx context.Context, room int64) (io.ReadCloser, error
 			continue
 		}
 		if resp.StatusCode == http.StatusOK {
-			return resp.Body, nil
+			return &LiveStream{ReadCloser: resp.Body, Quality: source.quality, QualityLabel: source.label}, nil
 		}
 		resp.Body.Close()
 	}

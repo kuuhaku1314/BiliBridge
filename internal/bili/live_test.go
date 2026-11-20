@@ -35,3 +35,40 @@ func TestFollowedLiveListsOnlyOnAirRooms(t *testing.T) {
 		t.Fatalf("unexpected followed rooms: %+v", rooms)
 	}
 }
+
+func TestLiveSourcesPreferRequestedQualityAndReportFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		requested int
+		query     string
+		want      int
+		label     string
+	}{
+		{name: "web quality", requested: 250, query: "250", want: 250, label: "超清"},
+		{name: "album defaults to source", query: "10000", want: 400, label: "蓝光"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := NewClient("")
+			client.HTTP.Transport = testTransport(func(r *http.Request) (*http.Response, error) {
+				if got := r.URL.Query().Get("qn"); got != tc.query {
+					t.Errorf("requested qn=%s, want %s", got, tc.query)
+				}
+				body := `{"code":0,"data":{"live_status":1,"playurl_info":{"playurl":{
+					"g_qn_desc":[{"qn":250,"desc":"超清"},{"qn":400,"desc":"蓝光"}],
+					"stream":[{"format":[{"format_name":"flv","codec":[
+						{"current_qn":400,"base_url":"/blue.flv","url_info":[{"host":"https://cdn.example"}]},
+						{"current_qn":250,"base_url":"/super.flv","url_info":[{"host":"https://cdn.example"}]}
+					]}]}]
+				}}}}`
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})
+			sources, err := client.liveSources(t.Context(), 42, tc.requested)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(sources) != 2 || sources[0].quality != tc.want || sources[0].label != tc.label {
+				t.Fatalf("unexpected live sources: %+v", sources)
+			}
+		})
+	}
+}

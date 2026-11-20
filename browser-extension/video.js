@@ -5,14 +5,19 @@ let pendingFrame = 0;
 let toolbar;
 let toolbarPlayer;
 
-function selectedSource(player, video) {
+function readPlayerSource(video) {
   if (!video) return {};
   let actual;
   const sourceEvent = event => { actual = event.detail; };
   video.addEventListener("bilibridge-source", sourceEvent, {once: true});
   video.dispatchEvent(new Event("bilibridge-read-source", {bubbles: true}));
   video.removeEventListener("bilibridge-source", sourceEvent);
+  return actual || {};
+}
 
+function selectedSource(player, video) {
+  if (!video) return {};
+  const actual = readPlayerSource(video);
   const entry = player.querySelector(".bpx-player-ctrl-quality-menu-item.bpx-state-active[data-value], " +
     ".bpx-player-ctrl-quality-menu-item[aria-selected='true'][data-value], .squirtle-select-item.active[data-value]");
   const label = (player.querySelector(".bpx-player-ctrl-quality-result, .squirtle-select-text")?.textContent || "")
@@ -35,6 +40,15 @@ function selectedSource(player, video) {
   return {quality, codec};
 }
 
+function selectedLiveQuality(player, video) {
+  const {quality} = readPlayerSource(video);
+  if (quality) return quality;
+  const label = player.querySelector(".quality-wrap .selected-qn")?.textContent || "";
+  const labels = [["杜比", 30000], ["4K", 20000], ["2K", 15000], ["原画", 10000], ["蓝光", 400],
+    ["超清", 250], ["高清", 150], ["流畅", 80]];
+  return labels.find(([name]) => label.toUpperCase().includes(name))?.[1];
+}
+
 function addPotPlayerButton() {
   pendingFrame = 0;
   const live = liveOrigin && liveRoomPage.test(location.pathname);
@@ -45,18 +59,22 @@ function addPotPlayerButton() {
     toolbar = toolbarPlayer = null;
     return;
   }
-  const host = live ? (player.closest(".fullscreen-container-paddingbox") || player.closest(".player-section")) :
-    (player.closest("#playerWrap, #bilibili-player-wrap") || player.closest("#bilibili-player") || player);
-  if (!host) return;
+  const host = live ? document.querySelector(".head-info-section .header-right") :
+    player.closest("#playerWrap, #bilibili-player-wrap") || player;
+  if (!host) {
+    toolbar?.remove();
+    toolbar = toolbarPlayer = null;
+    return;
+  }
   if (toolbarPlayer === player) {
-    if (toolbar.nextElementSibling !== host) host.before(toolbar);
+    if (toolbar.parentElement !== host) host.insertBefore(toolbar, live ? host.firstChild : null);
     return;
   }
   toolbar?.remove();
   toolbar = document.createElement("div");
   toolbar.className = "bilibridge-toolbar";
-  toolbarPlayer = player;
   if (live) toolbar.classList.add("bilibridge-toolbar-live");
+  toolbarPlayer = player;
   const button = document.createElement("button");
   const status = document.createElement("output");
   button.type = "button";
@@ -73,7 +91,7 @@ function addPotPlayerButton() {
     }
     event.stopPropagation();
     const video = player.querySelector("video");
-    const source = live ? {} : selectedSource(player, video);
+    const source = live ? {quality: selectedLiveQuality(player, video)} : selectedSource(player, video);
     const pageAtClick = location.href;
     button.disabled = true;
     clearTimeout(statusTimer);
@@ -101,7 +119,7 @@ function addPotPlayerButton() {
     }
   });
   toolbar.append(status, button);
-  host.before(toolbar);
+  host.insertBefore(toolbar, live ? host.firstChild : null);
 }
 
 new MutationObserver(() => {

@@ -43,8 +43,12 @@
     if (!(video instanceof HTMLVideoElement)) return;
     let quality;
     try {
-      const selected = window.player?.getQulity?.() ?? window.player?.getQuality?.();
-      quality = selected?.realQ || selected?.nowQ || selected;
+      if (location.hostname === "live.bilibili.com") {
+        quality = Number.parseInt(window.livePlayer?.getPlayerInfo?.()?.quality, 10);
+      } else {
+        const selected = window.player?.getQulity?.() ?? window.player?.getQuality?.();
+        quality = selected?.realQ || selected?.nowQ || selected;
+      }
     } catch {
       // The visible quality menu is also available to the content script.
     }

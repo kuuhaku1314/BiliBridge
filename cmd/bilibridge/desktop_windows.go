@@ -245,7 +245,7 @@ func (d *desktop) play(requestCtx context.Context, request bridgeRequest) bridge
 	u, err := url.Parse(request.Ref)
 	if err == nil && u.Scheme == "https" && u.Host == "live.bilibili.com" && u.User == nil && liveRoomPage.MatchString(u.Path) {
 		if roomID, err := strconv.ParseInt(strings.Trim(u.Path, "/"), 10, 64); err == nil {
-			return d.playLive(requestCtx, request.Cookie, roomID)
+			return d.playLive(requestCtx, request.Cookie, roomID, request.Quality)
 		}
 	}
 	if err != nil || u.Scheme != "https" || u.Host != "www.bilibili.com" || u.User != nil || !supportedPage.MatchString(u.Path) {

@@ -17,13 +17,14 @@ import (
 )
 
 var liveRoomPage = regexp.MustCompile(`^/[1-9][0-9]{0,18}/?$`)
-var liveStreamName = regexp.MustCompile(`^([1-9][0-9]{0,18})(?:-[A-Z2-7]{26,64})?$`)
+var liveStreamName = regexp.MustCompile(`^([1-9][0-9]{0,18})(?:-(?:q([1-9][0-9]{0,4})-)?[A-Z2-7]{26,64})?$`)
 
 type liveOpening struct {
 	name    string
 	room    bili.LiveRoom
 	started chan struct{}
 	once    sync.Once
+	source  bridgeReply
 }
 
 func liveTitle(room bili.LiveRoom) string {
@@ -35,16 +36,17 @@ func liveTitle(room bili.LiveRoom) string {
 	return "[直播] " + strconv.FormatInt(room.ID, 10)
 }
 
-func liveRoomID(stem string) (int64, bool) {
+func liveRoomRef(stem string) (int64, int, bool) {
 	match := liveStreamName.FindStringSubmatch(stem)
 	if match == nil {
-		return 0, false
+		return 0, 0, false
 	}
 	id, err := strconv.ParseInt(match[1], 10, 64)
-	return id, err == nil
+	quality, _ := strconv.Atoi(match[2])
+	return id, quality, err == nil
 }
 
-func (d *desktop) playLive(requestCtx context.Context, cookie string, roomID int64) bridgeReply {
+func (d *desktop) playLive(requestCtx context.Context, cookie string, roomID int64, quality int) bridgeReply {
 	d.webMu.Lock()
 	defer d.webMu.Unlock()
 	cfg := d.settings()
@@ -65,11 +67,11 @@ func (d *desktop) playLive(requestCtx context.Context, cookie string, roomID int
 	if err != nil {
 		return bridgeReply{Error: "找不到 PotPlayer 64 位"}
 	}
-	opening := &liveOpening{
-		name:    strconv.FormatInt(room.ID, 10) + "-" + rand.Text(),
-		room:    room,
-		started: make(chan struct{}),
+	name := strconv.FormatInt(room.ID, 10)
+	if quality > 0 && quality <= 30000 {
+		name += "-q" + strconv.Itoa(quality)
 	}
+	opening := &liveOpening{name: name + "-" + rand.Text(), room: room, started: make(chan struct{})}
 	d.mu.Lock()
 	d.liveOpen = opening
 	d.mu.Unlock()
@@ -109,7 +111,7 @@ func (d *desktop) playLive(requestCtx context.Context, cookie string, roomID int
 				d.webCancel = nil
 			}
 			opened = true
-			return bridgeReply{OK: true}
+			return opening.source
 		}
 		select {
 		case <-ctx.Done():
@@ -129,7 +131,7 @@ func (d *desktop) livePlayback(stem string) (*bili.Client, *liveOpening) {
 }
 
 func (d *desktop) serveLiveItem(w http.ResponseWriter, r *http.Request, stem, base string) {
-	id, ok := liveRoomID(stem)
+	id, _, ok := liveRoomRef(stem)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -154,7 +156,7 @@ func (d *desktop) serveLiveItem(w http.ResponseWriter, r *http.Request, stem, ba
 
 func (d *desktop) serveLive(w http.ResponseWriter, r *http.Request, name string) {
 	stem, flv := strings.CutSuffix(name, ".flv")
-	room, ok := liveRoomID(stem)
+	room, quality, ok := liveRoomRef(stem)
 	if !flv || !ok {
 		http.NotFound(w, r)
 		return
@@ -164,14 +166,14 @@ func (d *desktop) serveLive(w http.ResponseWriter, r *http.Request, name string)
 		return
 	}
 	client, opening := d.livePlayback(stem)
-	body, err := client.OpenLive(r.Context(), room)
+	body, err := client.OpenLive(r.Context(), room, quality)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Content-Type", "video/x-flv")
 	if opening != nil {
-		w = liveStartWriter{ResponseWriter: w, opening: opening}
+		w = liveStartWriter{ResponseWriter: w, opening: opening, source: body}
 	}
 	stream.ProxyLiveFLV(r.Context(), w, body)
 }
@@ -179,12 +181,16 @@ func (d *desktop) serveLive(w http.ResponseWriter, r *http.Request, name string)
 type liveStartWriter struct {
 	http.ResponseWriter
 	opening *liveOpening
+	source  *bili.LiveStream
 }
 
 func (w liveStartWriter) Write(p []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(p)
 	if n > 0 && err == nil {
-		w.opening.once.Do(func() { close(w.opening.started) })
+		w.opening.once.Do(func() {
+			w.opening.source = bridgeReply{OK: true, Quality: w.source.Quality, QualityLabel: w.source.QualityLabel}
+			close(w.opening.started)
+		})
 	}
 	return n, err
 }

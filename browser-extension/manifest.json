@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BiliBridge",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "用 PotPlayer 播放当前 B 站视频或直播，并连接托盘程序。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqlTJ4QIYXnv1FOuwHfs0ePtK52y7weLRhn/eIbuwNguAov7/KWMehbWJj8wU3A4fCPfj+hukDy1iYL9IuRLzzpKXocJ7mAqoPYfDtdnOfjn80W9byKDul4MkWWLI3RwmSGIyFZ8z61UXkkUFgLowx9dv0SoE0uTBEytb1Duqyu6gN3n0cQ4yRJsX7LXhdsiYDWDmwjTmx45i3nN3GywbiXrv161/JAeULhbXeCLE76t8py77wg5BhGzBc3423LwnhTy6P4FCSuMXYGUuz9YrX74DVJAyzYPJiH/zcLfkwliwqOML6FhnYe0G6ANb2ld7N3d2hW8upLJ+xKevcZinkQIDAQAB",
   "permissions": ["cookies", "nativeMessaging"],
@@ -14,7 +14,7 @@
   "background": {"service_worker": "background.js"},
   "content_scripts": [
     {
-      "matches": ["https://www.bilibili.com/video/*", "https://www.bilibili.com/bangumi/play/*"],
+      "matches": ["https://www.bilibili.com/video/*", "https://www.bilibili.com/bangumi/play/*", "https://live.bilibili.com/*"],
       "js": ["player-source.js"],
       "world": "MAIN",
       "run_at": "document_start"

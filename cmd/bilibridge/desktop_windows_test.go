@@ -69,7 +69,7 @@ func TestBrowserSyncRetainsAlbumSession(t *testing.T) {
 }
 
 func TestLiveItemReturnsCoverAndPlaybackURL(t *testing.T) {
-	const stem = "21452505-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const stem = "21452505-q250-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	d := desktop{
 		cfg: desktopConfig{Key: "test-key", Live: true},
 		liveOpen: &liveOpening{
@@ -87,5 +87,8 @@ func TestLiveItemReturnsCoverAndPlaybackURL(t *testing.T) {
 	if item["url"] != d.cfg.baseURL()+"/live-stream/"+stem+".flv" ||
 		item["title"] != "[直播] GTA6" || item["thumbnail"] != "https://i0.hdslb.com/room.jpg" {
 		t.Fatalf("unexpected live item: %v", item)
+	}
+	if id, quality, ok := liveRoomRef(stem); !ok || id != 21452505 || quality != 250 {
+		t.Fatalf("live URL lost requested quality: %d %d %t", id, quality, ok)
 	}
 }
