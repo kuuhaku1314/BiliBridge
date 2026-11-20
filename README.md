@@ -4,7 +4,9 @@
 
 ## 启动
 
-从 [GitHub Releases](https://github.com/kuuhaku1314/BiliBridge/releases/latest) 下载 Windows x64 ZIP 并完整解压。在解压后的目录中，双击 `bin/BiliBridgeDesktop.exe` 启动托盘程序。
+先安装 64 位 PotPlayer。从 [GitHub Releases](https://github.com/kuuhaku1314/BiliBridge/releases/latest) 下载 `BiliBridge-*-windows-amd64.zip` 并完整解压。在解压后的目录中，双击 `bin/BiliBridgeDesktop.exe` 启动托盘程序。
+
+**Windows 发布包已内置 FFmpeg**，用于命令行的 `-hls` 模式。解压后即可使用，无需另行安装或配置 `PATH`。
 
 首次启动会登记 Chrome / Edge 的本机消息入口，并自动为 PotPlayer 添加 **B站首页**、**我的收藏** 和 **我关注的直播** 三个原生外部专辑。PotPlayer 正在运行时，专辑文件在它退出后更新。按 F6 查看右侧播放列表，在对应专辑的右键菜单中可切换「样式 → 显示缩略图 + 4 行信息」。直播专辑只显示正在开播的关注房间，可打开 B 站提供的 FLV 直播源。直播起播前会尝试预缓冲 6 秒内容，最多等待 10 秒或缓存 12 MiB。
 
@@ -18,7 +20,23 @@
 
 弹幕从 B 站分段读取，独立覆盖在 PotPlayer 窗口上。弹幕开关即时生效，普通滚动、顶部、底部和逆向弹幕可显示。显示区域按播放器客户区和视频宽高比计算，动画跟随所在显示器刷新率。
 
-桌面播放把 B 站原始视频和音频作为独立的本地流交给 PotPlayer，读取时会预加载后续片段。首页和收藏使用 DASH 清单关联两条流。网页启动时等待播放器起播，再续播到网页位置。命令行的 `-hls` 需要 PATH 中的 FFmpeg。SVP 由本机配置决定何时处理。
+桌面播放把 B 站原始视频和音频作为独立的本地流交给 PotPlayer，读取时会预加载后续片段。首页和收藏使用 DASH 清单关联两条流。网页启动时等待播放器起播，再续播到网页位置。SVP 由本机配置决定何时处理。
+
+## 命令行与 FFmpeg
+
+在解压后的目录中，可以直接使用发布包里的命令行程序播放视频。
+
+```powershell
+.\bin\bilibridge.exe "https://www.bilibili.com/video/BV1wRsV6gEP4"
+```
+
+用 `-hls` 启动时，BiliBridge 会用 FFmpeg 按需封装 H.264/AAC 流。程序优先查找与 `bilibridge.exe` 同目录的 `ffmpeg.exe`，然后查找 `PATH`。解压 Windows 发布包后，可以直接运行以下命令。
+
+```powershell
+.\bin\bilibridge.exe -hls "https://www.bilibili.com/video/BV1wRsV6gEP4"
+```
+
+自行构建 BiliBridge 时，可以将 Windows 版 `ffmpeg.exe` 放进 `bin` 目录，或使用系统 `PATH` 上已有的 FFmpeg。内置构建使用 LGPL 2.1 或更新版本，许可证位于 `licenses/`，对应源码见发布页附件。 [FFmpeg 下载页](https://ffmpeg.org/download.html#build-windows)
 
 ## 从源码构建
 
@@ -26,10 +44,5 @@
 
 ```powershell
 go build -trimpath -ldflags=-H=windowsgui -o bin/BiliBridgeDesktop.exe ./cmd/bilibridge
-```
-
-命令行仍可单独使用。
-
-```powershell
-go run ./cmd/bilibridge -hls "https://www.bilibili.com/video/BV1wRsV6gEP4"
+go build -trimpath -o bin/bilibridge.exe ./cmd/bilibridge
 ```

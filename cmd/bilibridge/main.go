@@ -41,7 +41,7 @@ func main() {
 	codecs := fs.String("codec", "avc,hevc,av1", "video codecs in order of preference")
 	cookie := fs.String("cookie", "", "browser Cookie header, for logged-in qualities (defaults to BILI_COOKIE)")
 	launch := fs.Bool("launch", true, "open the stream in PotPlayer")
-	hls := fs.Bool("hls", false, "serve H.264/AAC as on-demand HLS using ffmpeg from PATH")
+	hls := fs.Bool("hls", false, "serve H.264/AAC as on-demand HLS using ffmpeg beside bilibridge.exe or on PATH")
 	prefetch := fs.Duration("prefetch", 60*time.Second, "prefetch window (0 disables prefetch)")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: bilibridge [flags] <BV id or video URL>")
@@ -68,14 +68,25 @@ func main() {
 	if *hls {
 		prefs.VideoCodec = bili.CodecAVC
 		var err error
-		ffmpeg, err = exec.LookPath("ffmpeg")
+		ffmpeg, err = findFFmpeg()
 		if err != nil {
-			log.Fatalf("-hls requires ffmpeg on PATH: %v", err)
+			log.Fatalf("-hls requires ffmpeg.exe beside bilibridge.exe or on PATH: %v", err)
 		}
 	}
 	if err := run(ctx, fs.Arg(0), *addr, cookieValue, ffmpeg, *launch, *prefetch, prefs); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func findFFmpeg() (string, error) {
+	if exe, err := os.Executable(); err == nil {
+		// Look beside the executable, independent of the shell's working directory.
+		candidate := filepath.Join(filepath.Dir(exe), "ffmpeg.exe")
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path, nil
+		}
+	}
+	return exec.LookPath("ffmpeg")
 }
 
 func parseCodecs(s string) []int {
