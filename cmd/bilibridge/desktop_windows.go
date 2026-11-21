@@ -36,6 +36,8 @@ type desktop struct {
 	cfg      desktopConfig
 	client   *bili.Client
 	liveOpen *liveOpening
+	hlsKey   string
+	hlsOnce  sync.Once
 
 	webMu     sync.Mutex
 	webCancel context.CancelFunc
@@ -199,6 +201,8 @@ func (d *desktop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		d.serveAlbumMedia(w, r, strings.TrimPrefix(route, "item/"), cfg)
 	case cfg.Live && (r.Method == http.MethodGet || r.Method == http.MethodHead) && strings.HasPrefix(route, "live-stream/"):
 		d.serveLive(w, r, strings.TrimPrefix(route, "live-stream/"))
+	case cfg.Live && (r.Method == http.MethodGet || r.Method == http.MethodHead) && strings.HasPrefix(route, "live-hls/"):
+		d.serveLiveHLS(w, r, strings.TrimPrefix(route, "live-hls/"), cfg.baseURL())
 	default:
 		http.NotFound(w, r)
 	}

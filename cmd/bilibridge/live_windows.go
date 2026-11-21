@@ -20,11 +20,19 @@ var liveRoomPage = regexp.MustCompile(`^/[1-9][0-9]{0,18}/?$`)
 var liveStreamName = regexp.MustCompile(`^([1-9][0-9]{0,18})(?:-(?:q([1-9][0-9]{0,4})-)?[A-Z2-7]{26,64})?$`)
 
 type liveOpening struct {
-	name    string
-	room    bili.LiveRoom
-	started chan struct{}
-	once    sync.Once
-	source  bridgeReply
+	name     string
+	room     bili.LiveRoom
+	playback bili.LivePlayback
+	started  chan struct{}
+	once     sync.Once
+	source   bridgeReply
+}
+
+func (o *liveOpening) start(quality int, label string) {
+	o.once.Do(func() {
+		o.source = bridgeReply{OK: true, Quality: quality, QualityLabel: label}
+		close(o.started)
+	})
 }
 
 func liveTitle(room bili.LiveRoom) string {
@@ -67,11 +75,15 @@ func (d *desktop) playLive(requestCtx context.Context, cookie string, roomID int
 	if err != nil {
 		return bridgeReply{Error: "找不到 PotPlayer 64 位"}
 	}
+	playback, err := client.ResolveLive(ctx, room.ID, quality)
+	if err != nil {
+		return bridgeReply{Error: err.Error()}
+	}
 	name := strconv.FormatInt(room.ID, 10)
 	if quality > 0 && quality <= 30000 {
 		name += "-q" + strconv.Itoa(quality)
 	}
-	opening := &liveOpening{name: name + "-" + rand.Text(), room: room, started: make(chan struct{})}
+	opening := &liveOpening{name: name + "-" + rand.Text(), room: room, playback: playback, started: make(chan struct{})}
 	d.mu.Lock()
 	d.liveOpen = opening
 	d.mu.Unlock()
@@ -131,21 +143,34 @@ func (d *desktop) livePlayback(stem string) (*bili.Client, *liveOpening) {
 }
 
 func (d *desktop) serveLiveItem(w http.ResponseWriter, r *http.Request, stem, base string) {
-	id, _, ok := liveRoomRef(stem)
+	id, quality, ok := liveRoomRef(stem)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	client, opening := d.livePlayback(stem)
 	var room bili.LiveRoom
+	var playback bili.LivePlayback
 	if opening != nil {
 		room = opening.room
+		playback = opening.playback
 	} else {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		room, _ = client.LiveRoomInfo(ctx, id)
 		cancel()
+		ctx, cancel = context.WithTimeout(r.Context(), 12*time.Second)
+		var err error
+		playback, err = client.ResolveLive(ctx, id, quality)
+		cancel()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
 	}
 	info := map[string]string{"url": base + "/live-stream/" + stem + ".flv"}
+	if playback.HLSURL != "" {
+		info["url"] = d.liveHLSURL(base, stem, "index.m3u8", playback.HLSURL)
+	}
 	if room.ID != 0 {
 		info["title"] = liveTitle(room)
 		info["thumbnail"] = room.Thumbnail()
@@ -187,10 +212,7 @@ type liveStartWriter struct {
 func (w liveStartWriter) Write(p []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(p)
 	if n > 0 && err == nil {
-		w.opening.once.Do(func() {
-			w.opening.source = bridgeReply{OK: true, Quality: w.source.Quality, QualityLabel: w.source.QualityLabel}
-			close(w.opening.started)
-		})
+		w.opening.start(w.source.Quality, w.source.QualityLabel)
 	}
 	return n, err
 }

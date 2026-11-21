@@ -89,10 +89,19 @@ type liveSource struct {
 	url     string
 	quality int
 	label   string
+	hls     bool
 }
 
 type LiveStream struct {
 	io.ReadCloser
+	Quality      int
+	QualityLabel string
+}
+
+// LivePlayback carries the upstream playlist for rooms that use HLS. An empty
+// HLSURL means the room has an FLV source that the local proxy can open.
+type LivePlayback struct {
+	HLSURL       string
 	Quality      int
 	QualityLabel string
 }
@@ -102,8 +111,8 @@ func (c *Client) liveSources(ctx context.Context, room int64, quality int) ([]li
 		quality = 10000
 	}
 	params := url.Values{
-		"room_id": {strconv.FormatInt(room, 10)}, "platform": {"web"}, "protocol": {"0"},
-		"format": {"0"}, "codec": {"0,1"}, "qn": {strconv.Itoa(quality)}, "no_playurl": {"0"},
+		"room_id": {strconv.FormatInt(room, 10)}, "platform": {"web"}, "protocol": {"0,1"},
+		"format": {"0,1,2"}, "codec": {"0,1"}, "qn": {strconv.Itoa(quality)}, "no_playurl": {"0"},
 	}
 	var data struct {
 		Status int `json:"live_status"`
@@ -114,7 +123,8 @@ func (c *Client) liveSources(ctx context.Context, room int64, quality int) ([]li
 					Name string `json:"desc"`
 				} `json:"g_qn_desc"`
 				Streams []struct {
-					Formats []struct {
+					Protocol string `json:"protocol_name"`
+					Formats  []struct {
 						Name   string `json:"format_name"`
 						Codecs []struct {
 							Path    string `json:"base_url"`
@@ -142,25 +152,30 @@ func (c *Client) liveSources(ctx context.Context, room int64, quality int) ([]li
 	var sources []liveSource
 	for _, stream := range data.Info.PlayURL.Streams {
 		for _, format := range stream.Formats {
-			if format.Name != "flv" {
+			hls := stream.Protocol == "http_hls" && (format.Name == "fmp4" || format.Name == "ts")
+			if format.Name != "flv" && !hls {
 				continue
 			}
 			for _, codec := range format.Codecs {
 				for _, mirror := range codec.URLs {
 					u, err := url.Parse(mirror.Host + codec.Path + mirror.Extra)
 					if err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil {
-						sources = append(sources, liveSource{u.String(), codec.Quality, labels[codec.Quality]})
+						sources = append(sources, liveSource{url: u.String(), quality: codec.Quality, label: labels[codec.Quality], hls: hls})
 					}
 				}
 			}
 		}
 	}
 	if len(sources) == 0 {
-		return nil, errors.New("直播间没有返回可用的 FLV 播放源")
+		return nil, errors.New("直播间没有返回可用的 FLV 或 HLS 播放源")
 	}
-	// Prefer the requested quality over fallbacks returned for other codecs.
+	// Keep FLV as the first choice, then prefer the requested quality.
 	slices.SortStableFunc(sources, func(a, b liveSource) int {
 		switch {
+		case !a.hls && b.hls:
+			return -1
+		case a.hls && !b.hls:
+			return 1
 		case a.quality == quality && b.quality != quality:
 			return -1
 		case a.quality != quality && b.quality == quality:
@@ -178,26 +193,71 @@ var liveHTTP = &http.Client{Transport: &http.Transport{
 	ForceAttemptHTTP2:     true,
 }}
 
+// FetchLiveMedia opens a playlist or segment using the live room's CDN headers.
+func FetchLiveMedia(ctx context.Context, room int64, method, rawURL, byteRange string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = MediaHeader()
+	req.Header.Set("Referer", fmt.Sprintf("https://live.bilibili.com/%d", room))
+	if byteRange != "" {
+		req.Header.Set("Range", byteRange)
+	}
+	return liveHTTP.Do(req)
+}
+
+func openLiveSource(ctx context.Context, room int64, source liveSource) (*http.Response, error) {
+	resp, err := FetchLiveMedia(ctx, room, http.MethodGet, source.url, "")
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("live source: HTTP %d", resp.StatusCode)
+	}
+	return resp, nil
+}
+
+// ResolveLive selects the local FLV proxy or a reachable HLS playlist.
+func (c *Client) ResolveLive(ctx context.Context, room int64, quality int) (LivePlayback, error) {
+	sources, err := c.liveSources(ctx, room, quality)
+	if err != nil {
+		return LivePlayback{}, err
+	}
+	if !sources[0].hls {
+		return LivePlayback{}, nil
+	}
+	for _, source := range sources {
+		// Bound both the connection and the read of the playlist signature.
+		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		resp, err := openLiveSource(probeCtx, room, source)
+		var prefix [7]byte
+		if err == nil {
+			_, err = io.ReadFull(resp.Body, prefix[:])
+			resp.Body.Close()
+		}
+		cancel()
+		if err == nil && string(prefix[:]) == "#EXTM3U" {
+			return LivePlayback{HLSURL: resp.Request.URL.String(), Quality: source.quality, QualityLabel: source.label}, nil
+		}
+	}
+	return LivePlayback{}, errors.New("直播 HLS 线路暂时无法连接")
+}
+
 func (c *Client) OpenLive(ctx context.Context, room int64, quality int) (*LiveStream, error) {
 	sources, err := c.liveSources(ctx, room, quality)
 	if err != nil {
 		return nil, err
 	}
 	for _, source := range sources {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.url, nil)
-		if err != nil {
-			return nil, err
+		if source.hls {
+			break
 		}
-		req.Header = MediaHeader()
-		req.Header.Set("Referer", fmt.Sprintf("https://live.bilibili.com/%d", room))
-		resp, err := liveHTTP.Do(req)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode == http.StatusOK {
+		resp, err := openLiveSource(ctx, room, source)
+		if err == nil {
 			return &LiveStream{ReadCloser: resp.Body, Quality: source.quality, QualityLabel: source.label}, nil
 		}
-		resp.Body.Close()
 	}
 	return nil, errors.New("直播线路暂时无法连接")
 }

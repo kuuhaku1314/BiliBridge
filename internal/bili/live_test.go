@@ -3,6 +3,7 @@ package bili
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -70,5 +71,43 @@ func TestLiveSourcesPreferRequestedQualityAndReportFallback(t *testing.T) {
 				t.Fatalf("unexpected live sources: %+v", sources)
 			}
 		})
+	}
+}
+
+func TestResolveLiveHLSOnlyRoom(t *testing.T) {
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Referer") != "https://live.bilibili.com/308543" {
+			t.Error("missing live room referer")
+		}
+		if r.URL.Path == "/available/index.m3u8" {
+			io.WriteString(w, "#EXTM3U\n#EXT-X-VERSION:7\n")
+			return
+		}
+		io.WriteString(w, "<html>line unavailable</html>")
+	}))
+	defer cdn.Close()
+
+	client := NewClient("")
+	client.HTTP.Transport = testTransport(func(r *http.Request) (*http.Response, error) {
+		query := r.URL.Query()
+		if query.Get("protocol") != "0,1" || query.Get("format") != "0,1,2" || query.Get("qn") != "10000" {
+			t.Errorf("unexpected format query: %s", r.URL.RawQuery)
+		}
+		body := `{"code":0,"data":{"live_status":1,"playurl_info":{"playurl":{
+			"g_qn_desc":[{"qn":250,"desc":"超清"}],
+			"stream":[{"protocol_name":"http_hls","format":[{"format_name":"fmp4","codec":[
+				{"base_url":"/index.m3u8","current_qn":250,
+				"url_info":[{"host":"` + cdn.URL + `/unavailable"},{"host":"` + cdn.URL + `/available"}]}
+			]}]}]
+		}}}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+
+	playback, err := client.ResolveLive(t.Context(), 308543, 10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if playback.HLSURL != cdn.URL+"/available/index.m3u8" || playback.Quality != 250 || playback.QualityLabel != "超清" {
+		t.Fatalf("unexpected HLS playback: %+v", playback)
 	}
 }

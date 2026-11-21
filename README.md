@@ -15,7 +15,7 @@
 
 **Windows 发布包已内置 FFmpeg**，用于命令行的 `-hls` 模式。解压后即可使用，无需另行安装或配置 `PATH`。
 
-首次启动会登记 Chrome / Edge 的本机消息入口，并自动为 PotPlayer 添加 **B站首页**、**我的收藏** 和 **我关注的直播** 三个原生外部专辑。PotPlayer 正在运行时，专辑文件在它退出后更新。按 F6 查看右侧播放列表，在对应专辑的右键菜单中可切换「样式 → 显示缩略图 + 4 行信息」。直播专辑只显示正在开播的关注房间，可打开 B 站提供的 FLV 直播源。直播起播前会尝试预缓冲 6 秒内容，最多等待 10 秒或缓存 12 MiB。
+首次启动会登记 Chrome / Edge 的本机消息入口，并自动为 PotPlayer 添加 **B站首页**、**我的收藏** 和 **我关注的直播** 三个原生外部专辑。PotPlayer 正在运行时，专辑文件在它退出后更新。按 F6 查看右侧播放列表，在对应专辑的右键菜单中可切换「样式 → 显示缩略图 + 4 行信息」。直播专辑只显示正在开播的关注房间，支持 B 站的 FLV 和 HLS 直播源。FLV 起播前会尝试预缓冲 6 秒内容，最多等待 10 秒或缓存 12 MiB。
 
 在托盘菜单勾选 **开机自启** 后，BiliBridge 会在当前 Windows 用户登录时启动。再点一次可关闭。
 
@@ -43,7 +43,7 @@
 .\bin\bilibridge.exe -hls "https://www.bilibili.com/video/BV1wRsV6gEP4"
 ```
 
-自行构建 BiliBridge 时，可以将 Windows 版 `ffmpeg.exe` 放进 `bin` 目录，或使用系统 `PATH` 上已有的 FFmpeg。内置构建使用 LGPL 2.1 或更新版本，许可证位于 `licenses/`，对应源码见发布页附件。 [FFmpeg 下载页](https://ffmpeg.org/download.html#build-windows)
+自行构建 BiliBridge 时，可以将 Windows 版 `ffmpeg.exe` 放进 `bin` 目录，或使用系统 `PATH` 上已有的 FFmpeg。内置构建使用 LGPL 2.1 或更新版本，许可证位于 `licenses/`。 [内置 FFmpeg 的对应源码（v0.1.1 附件）](https://github.com/kuuhaku1314/BiliBridge/releases/download/v0.1.1/FFmpeg-8.0-BiliBridge-0.1.1-source.zip) · [FFmpeg 下载页](https://ffmpeg.org/download.html#build-windows)
 
 ## 从源码构建
 
